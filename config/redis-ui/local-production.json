@@ -1,0 +1,11 @@
+{
+  "connections": [
+    {
+      "label": "local",
+      "host": "redis",
+      "port": "6379",
+      "password": "",
+      "dbIndex": 0
+    }
+  ]
+}

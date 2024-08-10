@@ -1,0 +1,144 @@
+version: "3.9"
+
+networks:
+  reverse-proxy:
+    # Use an existing external network for reverse proxy integration
+    external: true
+
+services:
+  redis:
+    # Use the latest Redis image
+    image: "redis:latest"
+
+    # Name of the Redis container
+    container_name: "redis"
+
+    # Restart policy to keep the container running unless explicitly stopped
+    restart: "unless-stopped"
+
+    environment:
+      # Set Redis log level to debug (can be adjusted as needed)
+      - "REDIS_LOGLEVEL=debug"
+
+      # Disable potentially dangerous commands
+      - "REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL"
+
+    volumes:
+      # Mount timezone and localtime for consistent time settings
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+
+      # Mount custom Redis configuration file
+      - "./config/redis.conf:/usr/local/etc/redis/redis.conf"
+
+      # Mount data directory for Redis persistence
+      - "./data-redis/:/data"
+
+    networks:
+      # Connect the Redis container to the reverse-proxy network
+      - "reverse-proxy"
+
+    labels:
+      # Enable Traefik for this service
+      - "traefik.enable=true"
+
+      # Traefik TCP labels for Redis main port
+      # Define entrypoint for Redis
+      - "traefik.tcp.routers.redis.entrypoints=redis"
+      # Enable TLS for Redis
+      - "traefik.tcp.routers.redis.tls=true"
+      # Route based on SNI host
+      - "traefik.tcp.routers.redis.rule=HostSNI(`edge-redis.lan.homelab`)"
+      # Define the service for Redis
+      - "traefik.tcp.routers.redis.service=redis"
+      # Set Redis service port
+      - "traefik.tcp.services.redis.loadbalancer.server.port=6379"
+
+    # Command to start Redis with a custom configuration file and password
+    command: "redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_ROOT_PASSWORD}"
+
+    healthcheck:
+      # Command to test Redis health
+      test: ["CMD", "redis-cli", "ping"]
+
+      # Time to wait for the container to start before performing health checks
+      start_period: "5s"
+
+      # Time between health checks
+      interval: "10s"
+
+      # Time to wait for a health check to complete
+      timeout: "2s"
+
+      # Number of retries before considering the container unhealthy
+      retries: 2
+
+  redis-ui:
+    # Use the latest Redis Commander image for the UI
+    image: "rediscommander/redis-commander:latest"
+
+    # Name of the Redis UI container
+    container_name: "redis-ui"
+
+    # Restart policy to keep the container running unless explicitly stopped
+    restart: "unless-stopped"
+
+    environment:
+      # Uncomment and set these if you want to require HTTP authentication for Redis UI
+      # - "HTTP_USER=root"
+      # - "HTTP_PASSWORD=root"
+
+      # Redis host and password for UI connection
+      - "REDIS_HOST=redis"
+      - "REDIS_PASSWORD=${REDIS_ROOT_PASSWORD}"
+
+    volumes:
+      # Mount timezone and localtime for consistent time settings
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+
+      # Uncomment and mount configuration directory if you have custom UI configurations
+      # - "./config/redis-ui/:/redis-commander/config/"
+
+      # Uncomment and mount data directory if needed for Redis UI
+      # - "./data-redis-ui/:/redis-commander"
+
+    networks:
+      # Connect the Redis UI container to the reverse-proxy network
+      - "reverse-proxy"
+
+    labels:
+      # Enable Traefik for this service
+      - "traefik.enable=true"
+
+      # Traefik HTTP labels for Redis UI
+      # Define entrypoint for Redis UI
+      - "traefik.http.routers.redis-ui.entrypoints=websecure"
+      # Enable TLS for Redis UI
+      - "traefik.http.routers.redis-ui.tls=true"
+      # Route based on host
+      - "traefik.http.routers.redis-ui.rule=Host(`edge-redis.lan.homelab`)"
+      # Define the service for Redis UI
+      - "traefik.http.routers.redis-ui.service=redis-ui"
+      # Set Redis UI service port
+      - "traefik.http.services.redis-ui.loadbalancer.server.port=8081"
+
+    depends_on:
+      # Ensure the Redis container is started before starting the Redis UI
+      - "redis"
+
+    healthcheck:
+      # Command to test Redis UI health
+      test: ["CMD", "curl", "--fail", "http://localhost:8081/ping"]
+
+      # Time to wait for the container to start before performing health checks
+      start_period: "5s"
+
+      # Time between health checks
+      interval: "10s"
+
+      # Time to wait for a health check to complete
+      timeout: "2s"
+
+      # Number of retries before considering the container unhealthy
+      retries: 2
